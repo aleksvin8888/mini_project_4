@@ -1,0 +1,55 @@
+services:
+
+  backend_rds:
+    build: ./backend_rds
+    environment:
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+    networks:
+      - backend-network
+
+  backend_redis:
+    build: ./backend_redis
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+    ports:
+      - "8001:8001"
+    depends_on:
+      - redis
+    networks:
+      - backend-network
+
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./storage/pgData:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - backend-network
+
+  redis:
+    image: redis:6
+    ports:
+      - "6379:6379"
+    networks:
+      - backend-network
+
+networks:
+  backend-network:
+    name: backend-network
