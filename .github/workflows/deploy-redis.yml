@@ -1,6 +1,7 @@
 name: Deploy back-redis
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -8,7 +9,6 @@ on:
       - ./backend_redis/**
 
 jobs:
-  workflow_dispatch:
   deploy:
     runs-on: ubuntu-latest
 
