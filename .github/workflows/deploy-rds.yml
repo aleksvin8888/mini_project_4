@@ -1,6 +1,7 @@
 name: Deploy back-rds
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
