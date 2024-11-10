@@ -1,9 +1,11 @@
-name: Deploy Frontend
+name: Deploy back-redis
 
 on:
   push:
     branches:
       - main
+    paths:
+      - ./backend_redis/**
 
 jobs:
   deploy:
@@ -11,25 +13,32 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
-      - name: Sync files to S3
+      - name: Log-in to ECR
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: "eu-west-3"
-          S3_BUCKET: ${{ secrets.S3_BUCKET }}
-
+          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
-          aws s3 sync ./frontend/templates s3://$S3_BUCKET --delete
-          aws s3 cp ./frontend/config.json s3://$S3_BUCKET/config.json
+          aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
 
-      - name: Invalidate CloudFront cache
+      - name: Build and Push backend_redis Image
+        env:
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+          IMAGE_TAG: latest
+        run: |
+          cd backend_redis
+          docker build -t $ECR_REGISTRY/backend_redis:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/backend_redis:$IMAGE_TAG
+
+      - name: Update ECS service for backend_redis
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: "eu-west-3"
-          CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          CLUSTER_NAME: ${{ secrets.ECS_CLUSTER_NAME }}
+          SERVICE_NAME: ${{ secrets.ECS_REDIS_SERVICE_NAME }}
         run: |
-          aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_DISTRIBUTION_ID --paths "/*"
+          aws ecs update-service --cluster $CLUSTER_NAME --service $SERVICE_NAME --force-new-deployment --region $AWS_REGION
         
