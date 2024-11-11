@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - main
+      - 'main'
     paths:
-      - ./backend_rds/**
+      - 'backend_rds/**'
 
 jobs:
   deploy:
