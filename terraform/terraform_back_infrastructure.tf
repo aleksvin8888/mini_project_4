@@ -41,7 +41,7 @@ resource "aws_ecs_task_definition" "rds_api_task" {
   container_definitions = jsonencode([
     {
       name  = var.rds_container_name,
-      image = "${aws_ecr_repository.rds_api_repo.repository_url}:latest"
+      image = "${aws_ecr_repository.rds_api_repo.repository_url}:v1.0.0"
 
       essential = true
       portMappings = [
@@ -112,7 +112,7 @@ resource "aws_ecs_task_definition" "redis_api_task" {
   container_definitions = jsonencode([
     {
       name      = var.redis_container_name,
-      image     = "${aws_ecr_repository.redis_api_repo.repository_url}:latest"
+      image     = "${aws_ecr_repository.redis_api_repo.repository_url}:v1.0.0"
       essential = true
       portMappings = [
         {
