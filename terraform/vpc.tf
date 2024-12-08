@@ -131,3 +131,19 @@ resource "aws_vpc_endpoint" "s3" {
     Name = "S3 Gateway Endpoint"
   }
 }
+
+# VPC Endpoint для CloudWatch Logs
+resource "aws_vpc_endpoint" "cloudwatch_logs" {
+  vpc_id       = aws_vpc.custom_vpc.id
+  service_name = "com.amazonaws.${var.region}.logs"
+  vpc_endpoint_type = "Interface"
+
+  security_group_ids = [aws_security_group.logs_endpoint_sg.id]
+  subnet_ids         = aws_subnet.private_subnets[*].id
+
+  private_dns_enabled = true
+
+  tags = {
+    Name = "CloudWatch Logs Endpoint"
+  }
+}

@@ -1,4 +1,3 @@
-
 ######################################### Створює ECS cluster ##########################################################
 
 resource "aws_ecs_cluster" "api_cluster" {
@@ -7,7 +6,8 @@ resource "aws_ecs_cluster" "api_cluster" {
 
 ################## Створює репозиторії в Amazon ECR для зберігання образів Docker ######################################
 resource "aws_ecr_repository" "rds_api_repo" {
-  name = "rds-api-repo"
+  name         = "rds-api-repo"
+  force_delete = true
   image_scanning_configuration {
     scan_on_push = true
   }
@@ -17,8 +17,9 @@ resource "aws_ecr_repository" "rds_api_repo" {
 }
 
 resource "aws_ecr_repository" "redis_api_repo" {
-  name = "redis-api-repo"
-   image_scanning_configuration {
+  name         = "redis-api-repo"
+  force_delete = true
+  image_scanning_configuration {
     scan_on_push = true
   }
   tags = {
@@ -26,29 +27,20 @@ resource "aws_ecr_repository" "redis_api_repo" {
   }
 }
 
-
-output "ecr_rds_api_registry" {
-  value = aws_ecr_repository.rds_api_repo.repository_url
-  description = "ECR registry URL for RDS API"
-}
-
-output "ecr_redis_api_registry" {
-  value = aws_ecr_repository.redis_api_repo.repository_url
-  description = "ECR registry URL for Redis API"
-}
-
 ##################################### Створює task_definition ##########################################################
 
 resource "aws_ecs_task_definition" "rds_api_task" {
-  family = "rds-api-task"
+  depends_on = [aws_cloudwatch_log_group.rds_api_logs]
+
+  family       = "rds-api-task"
   network_mode = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu = "256"
-  memory = "512"
+  cpu          = "256"
+  memory       = "512"
 
   container_definitions = jsonencode([
     {
-      name = var.rds_container_name ,
+      name  = var.rds_container_name,
       image = "${aws_ecr_repository.rds_api_repo.repository_url}:latest"
 
       essential = true
@@ -59,10 +51,10 @@ resource "aws_ecs_task_definition" "rds_api_task" {
         }
       ]
       healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost:8000/test_connection/ || exit 1"]
-        interval    = 30    # Перевіряти кожні 30 секунд
-        timeout     = 5     # Таймаут перевірки - 5 секунд
-        retries     = 3     # Спробувати 3 рази перед поміткою як unhealthy
+        command = ["CMD-SHELL", "curl -f http://localhost:8000/test_connection/ || exit 1"]
+        interval = 30    # Перевіряти кожні 30 секунд
+        timeout = 5     # Таймаут перевірки - 5 секунд
+        retries = 3     # Спробувати 3 рази перед поміткою як unhealthy
         startPeriod = 10    # Дочекайтесь 10 секунд після запуску перед перевірками
       }
       environment = [
@@ -80,17 +72,25 @@ resource "aws_ecs_task_definition" "rds_api_task" {
         },
         {
           name  = "DB_HOST"
-          value = aws_db_instance.pg_database.endpoint
+          value = split(":", aws_db_instance.pg_database.endpoint)[0]
         },
         {
           name  = "DB_PORT"
-          value = "5432"
+          value = split(":", aws_db_instance.pg_database.endpoint)[1]
         },
         {
           name  = "CORS_ALLOWED_ORIGINS"
-          value = "https://${aws_cloudfront_distribution.frontend_distribution.domain_name}"
+          value = "https://${var.frontend_subdomain}.${var.main_domain_name}"
         }
       ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = "/ecs/${var.rds_container_name}"
+          awslogs-region        = var.region
+          awslogs-stream-prefix = "ecs"
+        }
+      }
     }
   ])
 
@@ -102,6 +102,7 @@ resource "aws_ecs_task_definition" "rds_api_task" {
 
 
 resource "aws_ecs_task_definition" "redis_api_task" {
+  depends_on = [aws_cloudwatch_log_group.redis_api_logs]
   family       = "redis-api-task"
   network_mode = "awsvpc"
   requires_compatibilities = ["FARGATE"]
@@ -119,14 +120,14 @@ resource "aws_ecs_task_definition" "redis_api_task" {
           protocol      = "tcp"
         }
       ]
-       healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost:8001/test_connection/ || exit 1"]
-        interval    = 30    # Перевіряти кожні 30 секунд
-        timeout     = 5     # Таймаут перевірки - 5 секунд
-        retries     = 3     # Спробувати 3 рази перед поміткою як unhealthy
+      healthCheck = {
+        command = ["CMD-SHELL", "curl -f http://localhost:8001/test_connection/ || exit 1"]
+        interval = 30    # Перевіряти кожні 30 секунд
+        timeout = 5     # Таймаут перевірки - 5 секунд
+        retries = 3     # Спробувати 3 рази перед поміткою як unhealthy
         startPeriod = 10    # Дочекайтесь 10 секунд після запуску перед перевірками
       }
-       environment = [
+      environment = [
         {
           name  = "REDIS_HOST"
           value = aws_elasticache_cluster.redis_cache.cache_nodes[0].address
@@ -141,13 +142,32 @@ resource "aws_ecs_task_definition" "redis_api_task" {
         },
         {
           name  = "CORS_ALLOWED_ORIGINS"
-          value = "https://${aws_cloudfront_distribution.frontend_distribution.domain_name}"
+          value = "https://${var.frontend_subdomain}.${var.main_domain_name}"
         }
       ]
+       logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = "/ecs/${var.redis_container_name}"
+          awslogs-region        = var.region
+          awslogs-stream-prefix = "ecs"
+        }
+      }
     }
   ])
   execution_role_arn = aws_iam_role.ecs_task_execution_role.arn
   task_role_arn      = aws_iam_role.ecs_task_role.arn
+}
+
+
+resource "aws_cloudwatch_log_group" "rds_api_logs" {
+  name              = "/ecs/${var.rds_container_name}"
+  retention_in_days = 1
+}
+
+resource "aws_cloudwatch_log_group" "redis_api_logs" {
+  name              = "/ecs/${var.redis_container_name}"
+  retention_in_days = 1
 }
 
 ######################################### ECS сервіси ##################################################################
@@ -202,27 +222,27 @@ resource "aws_alb" "api_alb" {
 }
 
 resource "aws_alb_target_group" "rds_target_group" {
-  name     = "rds-target-group"
-  port     = 8000
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.custom_vpc.id
+  name        = "rds-target-group"
+  port        = 8000
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.custom_vpc.id
   target_type = "ip"
 
   health_check {
-    path                = "/test_connection/" # URL-адреса для перевірки
-    interval            = 30        # Перевіряти кожні 30 секунд
-    timeout             = 5         # Таймаут перевірки
-    healthy_threshold   = 2         # 2 успішні перевірки - healthy
+    path = "/test_connection/" # URL-адреса для перевірки
+    interval = 30        # Перевіряти кожні 30 секунд
+    timeout = 5         # Таймаут перевірки
+    healthy_threshold = 2         # 2 успішні перевірки - healthy
     unhealthy_threshold = 3         # 3 невдалі перевірки - unhealthy
-    matcher             = "200"     # Очікуваний код відповіді
+    matcher = "200"     # Очікуваний код відповіді
   }
 }
 
 resource "aws_alb_target_group" "redis_target_group" {
-  name     = "redis-target-group"
-  port     = 8001
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.custom_vpc.id
+  name        = "redis-target-group"
+  port        = 8001
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.custom_vpc.id
   target_type = "ip"
 
   health_check {
@@ -244,8 +264,8 @@ resource "aws_alb_listener" "http_listener" {
   default_action {
     type = "redirect"
     redirect {
-      protocol = "HTTPS"
-      port     = "443"
+      protocol    = "HTTPS"
+      port        = "443"
       status_code = "HTTP_301"
     }
   }
@@ -253,7 +273,7 @@ resource "aws_alb_listener" "http_listener" {
 
 # HTTPS Listener
 resource "aws_alb_listener" "https_listener" {
-   depends_on        = [aws_acm_certificate_validation.frontend_cert_validation]
+  depends_on = [aws_acm_certificate_validation.frontend_cert_validation]
   load_balancer_arn = aws_alb.api_alb.arn
   port              = 443
   protocol          = "HTTPS"
@@ -277,7 +297,7 @@ resource "aws_alb_listener_rule" "rds_rule" {
 
   condition {
     host_header {
-      values = ["api-rds.${var.main_domain_name}"]
+      values = ["${var.rds_subdomain}.${var.main_domain_name}"]
     }
   }
 
@@ -293,7 +313,7 @@ resource "aws_alb_listener_rule" "redis_rule" {
 
   condition {
     host_header {
-      values = ["api-redis.${var.main_domain_name}"]
+      values = ["${var.redis_subdomain}.${var.main_domain_name}"]
     }
   }
 
@@ -308,23 +328,23 @@ resource "aws_alb_listener_rule" "redis_rule" {
 
 resource "aws_db_instance" "pg_database" {
   allocated_storage = 20                             # Розмір сховища (ГБ)
-  engine = "postgres"
-  engine_version = "17.1"
-  instance_class = "db.t3.micro"
-  db_name = var.db_name
-  username = var.db_user
-  password = var.db_password
+  engine               = "postgres"
+  engine_version       = "17.1"
+  instance_class       = "db.t3.micro"
+  db_name              = var.db_name
+  username             = var.db_user
+  password             = var.db_password
   publicly_accessible = false                       # Не робити базу доступною ззовні
   skip_final_snapshot = true                        # Пропустити створення знімка під час видалення
   vpc_security_group_ids = [aws_security_group.rds_db_sg.id]
   db_subnet_group_name = aws_db_subnet_group.rds-subnet-group.name
-  port = 5432
+  port                 = 5432
 }
 
 resource "aws_db_subnet_group" "rds-subnet-group" {
-  name       = "rds-subnet-group"
+  name        = "rds-subnet-group"
   description = "Subnet group for RDS database"
-  subnet_ids = aws_subnet.private_subnets[*].id
+  subnet_ids  = aws_subnet.private_subnets[*].id
 
   tags = {
     Name = "RDS Subnet Group"
@@ -342,13 +362,13 @@ resource "aws_elasticache_cluster" "redis_cache" {
   parameter_group_name = "default.redis7"
   port                 = 6379
   subnet_group_name    = aws_elasticache_subnet_group.redis-subnet-group.name
-  security_group_ids   = [aws_security_group.redis_sg.id]
+  security_group_ids = [aws_security_group.redis_sg.id]
 }
 
 resource "aws_elasticache_subnet_group" "redis-subnet-group" {
-  name       = "elasticache-subnet-group"
+  name        = "elasticache-subnet-group"
   description = "Subnet group for Elastic cache Redis"
-  subnet_ids = aws_subnet.private_subnets[*].id
+  subnet_ids  = aws_subnet.private_subnets[*].id
 
   tags = {
     Name = "Elasticache Subnet Group"
@@ -384,16 +404,16 @@ resource "aws_security_group" "redis_sg" {
   vpc_id      = aws_vpc.custom_vpc.id
 
   ingress {
-    from_port   = 6379
-    to_port     = 6379
-    protocol    = "tcp"
+    from_port = 6379
+    to_port   = 6379
+    protocol  = "tcp"
     security_groups = [aws_security_group.redis_api_sg.id] # Доступ тільки від ECS контейнерів
   }
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    from_port = 0
+    to_port   = 0
+    protocol  = "-1"
     cidr_blocks = ["0.0.0.0/0"] # Дозволяє вихідний трафік на всі адреси
   }
 
@@ -485,21 +505,44 @@ resource "aws_security_group" "ecr_endpoint_sg" {
   vpc_id = aws_vpc.custom_vpc.id
 
   ingress {
+    from_port = 443
+    to_port   = 443
+    protocol  = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port = 0
+    to_port   = 0
+    protocol  = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "ECR Endpoint Security Group"
+  }
+}
+
+# Security Group для CloudWatch Logs VPC Endpoint
+resource "aws_security_group" "logs_endpoint_sg" {
+  vpc_id = aws_vpc.custom_vpc.id
+
+  ingress {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["10.0.0.0/16"] # Дозволяємо трафік з внутрішньої мережі VPC
   }
 
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["0.0.0.0/0"] # Дозволяємо вихідний трафік
   }
 
   tags = {
-    Name = "ECR Endpoint Security Group"
+    Name = "Logs Endpoint SG"
   }
 }
 
@@ -571,6 +614,12 @@ resource "aws_iam_role_policy_attachment" "ecs_task_redis_access" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonElastiCacheFullAccess"
 }
 
+# Політика для доступу до CloudWatch Logs
+resource "aws_iam_role_policy_attachment" "ecs_task_cloudwatch_logs_access" {
+  role       = aws_iam_role.ecs_task_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
+}
+
 resource "aws_vpc_endpoint_policy" "ecr_policy" {
   vpc_endpoint_id = aws_vpc_endpoint.ecr_api.id
 
@@ -580,13 +629,13 @@ resource "aws_vpc_endpoint_policy" "ecr_policy" {
         Sid       = "AllowECRAccess",
         Effect    = "Allow",
         Principal = "*",
-        Action    = [
+        Action = [
           "ecr:BatchCheckLayerAvailability",
           "ecr:BatchGetImage",
           "ecr:GetDownloadUrlForLayer",
           "ecr:GetAuthorizationToken"
         ],
-        Resource  = "*"
+        Resource = "*"
       }
     ]
   })
