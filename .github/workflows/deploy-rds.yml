@@ -21,24 +21,24 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         run: |
-          aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
+          aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
       - name: Build and Push backend_rds Image
         env:
-          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
           IMAGE_TAG: latest
         run: |
           cd backend_rds
-          docker build -t $ECR_REGISTRY/backend_rds:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/backend_rds:$IMAGE_TAG
+          docker build -t $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/rds-api-repo:$IMAGE_TAG .
+          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/rds-api-repo:$IMAGE_TAG
         
       - name: Update ECS service for backend_rds
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
-          CLUSTER_NAME: ${{ secrets.ECS_CLUSTER_NAME }}
-          SERVICE_NAME: ${{ secrets.ECS_RDS_SERVICE_NAME }}
         run: |
-          aws ecs update-service --cluster $CLUSTER_NAME --service $SERVICE_NAME --force-new-deployment --region $AWS_REGION
+          aws ecs update-service --cluster api-cluster --service rds_api_service --force-new-deployment --region $AWS_REGION
