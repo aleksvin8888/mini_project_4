@@ -52,8 +52,8 @@ jobs:
           TASK_DEF=$(aws ecs describe-task-definition --task-definition rds_api_task --region $AWS_REGION)
 
           # Замінюємо тег образу в task_definition
-          NEW_TASK_DEF=$(echo $TASK_DEF | jq '.taskDefinition | {containerDefinitions, family, executionRoleArn, taskRoleArn, networkMode, requiresCompatibilities, cpu, memory} |
-              .containerDefinitions[0].image = "'$AWS_ACCOUNT_ID'.dkr.ecr.'$AWS_REGION'.amazonaws.com/rds-api-repo:'$IMAGE_TAG'"')
+          NEW_TASK_DEF=$(echo $TASK_DEF | jq '.taskDefinition | {containerDefinitions, family, executionRoleArn, taskRoleArn, networkMode, requiresCompatibilities, cpu, memory}')
+          NEW_TASK_DEF=$(echo $NEW_TASK_DEF | jq '.containerDefinitions[0].image = "'$AWS_ACCOUNT_ID'.dkr.ecr.'$AWS_REGION'.amazonaws.com/rds-api-repo:'$IMAGE_TAG'"')
 
           # Зберігаємо новий task_definition у тимчасовий файл
           echo $NEW_TASK_DEF > new-task-def.json
