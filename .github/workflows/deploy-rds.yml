@@ -57,7 +57,7 @@ jobs:
           IMAGE_TAG: ${{ env.tag }}
         run: |
           # Отримуємо поточний task_definition
-          TASK_DEF=$(aws ecs describe-task-definition --task-definition rds_api_task --region $AWS_REGION)
+          TASK_DEF=$(aws ecs describe-task-definition --task-definition rds-api-task --region $AWS_REGION)
 
           # Замінюємо тег образу в task_definition
           NEW_TASK_DEF=$(echo $TASK_DEF | jq '.taskDefinition | {containerDefinitions, family, executionRoleArn, taskRoleArn, networkMode, requiresCompatibilities, cpu, memory}')
