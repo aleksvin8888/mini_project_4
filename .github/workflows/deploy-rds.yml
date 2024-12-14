@@ -17,6 +17,9 @@ jobs:
           fetch-depth: 0
           tags: true
 
+      - name: Switch to tag
+        run: git checkout ${{ env.tag }}
+
       - name: Install jq
         run: |
           sudo apt-get update
