@@ -3,10 +3,8 @@ name: Deploy back-redis
 on:
   workflow_dispatch:
   push:
-    branches:
-      - 'main'
-    paths:
-      - 'backend_redis/**'
+    tags:
+      - '*'
 
 jobs:
   deploy:
@@ -21,11 +19,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq
 
-      - name: Determine Version Tag
+      - name: Determine Tag
         id: version
         run: |
-          TAG=$(git describe --tags --always --dirty)
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            TAG=$(git describe --tags $(git rev-list --tags --max-count=1))
+          else
+            TAG=${{ github.ref_name }}
+          fi
           echo "tag=$TAG" >> $GITHUB_ENV
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Log-in to ECR
         env:

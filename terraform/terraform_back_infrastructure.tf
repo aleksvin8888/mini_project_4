@@ -290,7 +290,7 @@ resource "aws_alb_listener" "https_listener" {
   }
 }
 
-# Правила маршрутизації
+# Правила маршрутизації для ALB
 resource "aws_alb_listener_rule" "rds_rule" {
   listener_arn = aws_alb_listener.https_listener.arn
   priority     = 1
