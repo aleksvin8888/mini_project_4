@@ -34,33 +34,24 @@ data "aws_subnet" "default_subnets" {
   id = each.value
 }
 
-# Додавання нового CIDR-блоку до існуючої VPC
-resource "aws_vpc_ipv4_cidr_block_association" "additional_cidr" {
-  vpc_id     = data.aws_vpc.default.id
-  cidr_block = "172.32.0.0/16"
-}
-
-# розрахунок CIDR-блоків
+# Локальні змінні
 locals {
-  # Основний і додатковий CIDR-блоки VPC
-  vpc_cidr_blocks = [
-    data.aws_vpc.default.cidr_block,
-    aws_vpc_ipv4_cidr_block_association.additional_cidr.cidr_block
-  ]
+  # Основний CIDR-блок VPC
+  vpc_cidr_block = data.aws_vpc.default.cidr_block
 
   # Список CIDR-блоків існуючих підмереж
   used_cidr_blocks = [for subnet in data.aws_subnet.default_subnets : subnet.cidr_block]
 
   # Визначення вільних CIDR-блоків
-  available_cidr_blocks = flatten([
-    for cidr_block in local.vpc_cidr_blocks : [
-      for i in range(8) : cidrsubnet(cidr_block, 4, i)
-      if !contains(local.used_cidr_blocks, cidrsubnet(cidr_block, 4, i))
-    ]
-  ])
+  available_cidr_blocks = [
+    for i in range(8) : cidrsubnet(local.vpc_cidr_block, 4, i)
+    if !contains(local.used_cidr_blocks, cidrsubnet(local.vpc_cidr_block, 4, i))
+  ]
 
-  # CIDR-блоки для публічних і приватних підмереж
-  new_public_cidrs  = length(local.available_cidr_blocks) >= 4 ? slice(local.available_cidr_blocks, 0, 4) : []
+  # Безпечне визначення публічних CIDR
+  new_public_cidrs = length(local.available_cidr_blocks) >= 4 ? slice(local.available_cidr_blocks, 0, 4) : []
+
+  # Безпечне визначення приватних CIDR
   new_private_cidrs = length(local.available_cidr_blocks) >= 8 ? slice(local.available_cidr_blocks, 4, 8) : []
 }
 
@@ -68,8 +59,7 @@ locals {
 
 # Приватні підмережі
 resource "aws_subnet" "private_subnets" {
-  count = length(local.new_private_cidrs)
-
+  count             = length(local.new_private_cidrs) > 0 ? length(local.new_private_cidrs) : 0
   vpc_id            = data.aws_vpc.default.id
   cidr_block        = local.new_private_cidrs[count.index]
   availability_zone = element(data.aws_availability_zones.available.names, count.index)
@@ -115,8 +105,7 @@ resource "aws_vpc_endpoint" "ecr_api" {
 
 # Публічні підмережі
 resource "aws_subnet" "public_subnets" {
-  count = length(local.new_public_cidrs)
-
+  count             = length(local.new_public_cidrs)
   vpc_id            = data.aws_vpc.default.id
   cidr_block        = local.new_public_cidrs[count.index]
   availability_zone = element(data.aws_availability_zones.available.names, count.index)
@@ -164,7 +153,7 @@ resource "aws_vpc_endpoint" "ecr_dkr" {
   }
 }
 
-# VPC Endpoint для S3 (для доступу до Docker-образів)
+# VPC Endpoint для S3 (для доступу до шарів Docker-образів)
 resource "aws_vpc_endpoint" "s3" {
   vpc_id           = data.aws_vpc.default.id
   service_name     = "com.amazonaws.${var.region}.s3"

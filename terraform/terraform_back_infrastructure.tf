@@ -29,6 +29,11 @@ resource "aws_ecr_repository" "redis_api_repo" {
 
 ##################################### Створює task_definition ##########################################################
 
+resource "aws_cloudwatch_log_group" "rds_api_logs" {
+  name              = "/ecs/${var.rds_container_name}"
+  retention_in_days = 1
+}
+
 resource "aws_ecs_task_definition" "rds_api_task" {
   depends_on = [aws_cloudwatch_log_group.rds_api_logs]
 
@@ -101,6 +106,11 @@ resource "aws_ecs_task_definition" "rds_api_task" {
 }
 
 
+resource "aws_cloudwatch_log_group" "redis_api_logs" {
+  name              = "/ecs/${var.redis_container_name}"
+  retention_in_days = 1
+}
+
 resource "aws_ecs_task_definition" "redis_api_task" {
   depends_on = [aws_cloudwatch_log_group.redis_api_logs]
   family       = "redis-api-task"
@@ -160,15 +170,6 @@ resource "aws_ecs_task_definition" "redis_api_task" {
 }
 
 
-resource "aws_cloudwatch_log_group" "rds_api_logs" {
-  name              = "/ecs/${var.rds_container_name}"
-  retention_in_days = 1
-}
-
-resource "aws_cloudwatch_log_group" "redis_api_logs" {
-  name              = "/ecs/${var.redis_container_name}"
-  retention_in_days = 1
-}
 
 ######################################### ECS сервіси ##################################################################
 
@@ -342,6 +343,7 @@ resource "aws_db_instance" "pg_database" {
 }
 
 resource "aws_db_subnet_group" "rds-subnet-group" {
+  depends_on = [aws_subnet.private_subnets]
   name        = "rds-subnet-group"
   description = "Subnet group for RDS database"
   subnet_ids  = aws_subnet.private_subnets[*].id
@@ -366,6 +368,7 @@ resource "aws_elasticache_cluster" "redis_cache" {
 }
 
 resource "aws_elasticache_subnet_group" "redis-subnet-group" {
+  depends_on = [aws_subnet.private_subnets]
   name        = "elasticache-subnet-group"
   description = "Subnet group for Elastic cache Redis"
   subnet_ids  = aws_subnet.private_subnets[*].id
@@ -531,14 +534,14 @@ resource "aws_security_group" "logs_endpoint_sg" {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"] # Дозволяємо трафік з внутрішньої мережі VPC
+    cidr_blocks = ["172.32.0.0/16"]
   }
 
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"] # Дозволяємо вихідний трафік
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   tags = {
