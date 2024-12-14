@@ -1,55 +1,68 @@
 
 ################################################# VPC ##################################################################
 
-# Custom VPC
-resource "aws_vpc" "custom_vpc" {
-  cidr_block           = "10.0.0.0/16"
-  enable_dns_support   = true
-  enable_dns_hostnames = true
+# Отримання Default VPC
+data "aws_vpc" "default" {
+  default = true
+}
 
-  tags = {
-    Name = "Custom VPC"
+# Отримання існуючих Internet Gateway у Default VPC
+data "aws_internet_gateway" "default" {
+  filter {
+    name   = "attachment.vpc-id"
+    values = [data.aws_vpc.default.id]
   }
 }
 
-# Інтернет-шлюз для публічних підмереж
-resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.custom_vpc.id
-
-  tags = {
-    Name = "Internet Gateway"
+# Отримання існуючих підмереж у Default VPC
+data "aws_subnets" "default_subnets" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
   }
 }
 
-# Таблиця маршрутів для публічних підмереж
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.custom_vpc.id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.igw.id
-  }
-
-  tags = {
-    Name = "Public Route Table"
-  }
+# Дані про доступні зони
+data "aws_availability_zones" "available" {
+  state = "available"
 }
 
-# Таблиця маршрутів для приватних підмереж
-resource "aws_route_table" "private" {
-  vpc_id = aws_vpc.custom_vpc.id
+# Отримання деталей підмереж
+data "aws_subnet" "default_subnets" {
+  for_each = toset(data.aws_subnets.default_subnets.ids)
 
-  tags = {
-    Name = "Private Route Table"
-  }
+  id = each.value
 }
+
+# Локальні змінні
+locals {
+  # Основний CIDR-блок VPC
+  vpc_cidr_block = data.aws_vpc.default.cidr_block
+
+  # Список CIDR-блоків існуючих підмереж
+  used_cidr_blocks = [for subnet in data.aws_subnet.default_subnets : subnet.cidr_block]
+
+  # Визначення вільних CIDR-блоків
+  available_cidr_blocks = [
+    for i in range(8) : cidrsubnet(local.vpc_cidr_block, 4, i)
+    if !contains(local.used_cidr_blocks, cidrsubnet(local.vpc_cidr_block, 4, i))
+  ]
+
+  # Безпечне визначення публічних CIDR
+  new_public_cidrs = length(local.available_cidr_blocks) >= 2 ? slice(local.available_cidr_blocks, 0, 2) : []
+
+  # Безпечне визначення приватних CIDR
+  new_private_cidrs = length(local.available_cidr_blocks) >= 4 ? slice(local.available_cidr_blocks, 2, 4) : []
+}
+
+################################################# Public Subnets ##################################################################
 
 # Публічні підмережі
 resource "aws_subnet" "public_subnets" {
-  count             = length(data.aws_availability_zones.available.names)
-  vpc_id            = aws_vpc.custom_vpc.id
-  cidr_block        = cidrsubnet(aws_vpc.custom_vpc.cidr_block, 4, count.index)
-  availability_zone = data.aws_availability_zones.available.names[count.index]
+  count             = length(local.new_public_cidrs)
+  vpc_id            = data.aws_vpc.default.id
+  cidr_block        = local.new_public_cidrs[count.index]
+  availability_zone = element(data.aws_availability_zones.available.names, count.index)
   map_public_ip_on_launch = true
 
   tags = {
@@ -57,16 +70,17 @@ resource "aws_subnet" "public_subnets" {
   }
 }
 
-# Приватні підмережі
-resource "aws_subnet" "private_subnets" {
-  count             = length(data.aws_availability_zones.available.names)
-  vpc_id            = aws_vpc.custom_vpc.id
-  cidr_block        = cidrsubnet(aws_vpc.custom_vpc.cidr_block, 4, count.index + length(data.aws_availability_zones.available.names))
-  availability_zone = data.aws_availability_zones.available.names[count.index]
-  map_public_ip_on_launch = false
+# Таблиця маршрутів для публічних підмереж
+resource "aws_route_table" "public" {
+  vpc_id = data.aws_vpc.default.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = data.aws_internet_gateway.default.id
+  }
 
   tags = {
-    Name = "Private Subnet ${count.index + 1}"
+    Name = "Public Route Table"
   }
 }
 
@@ -77,6 +91,30 @@ resource "aws_route_table_association" "public_subnets" {
   route_table_id = aws_route_table.public.id
 }
 
+################################################# Private Subnets ##################################################################
+
+# Приватні підмережі
+resource "aws_subnet" "private_subnets" {
+  count             = length(local.new_private_cidrs)
+  vpc_id            = data.aws_vpc.default.id
+  cidr_block        = local.new_private_cidrs[count.index]
+  availability_zone = element(data.aws_availability_zones.available.names, count.index)
+  map_public_ip_on_launch = false
+
+  tags = {
+    Name = "Private Subnet ${count.index + 1}"
+  }
+}
+
+# Таблиця маршрутів для приватних підмереж
+resource "aws_route_table" "private" {
+  vpc_id = data.aws_vpc.default.id
+
+  tags = {
+    Name = "Private Route Table"
+  }
+}
+
 # Асоціація приватних підмереж з таблицею маршрутів
 resource "aws_route_table_association" "private_subnets" {
   count          = length(aws_subnet.private_subnets)
@@ -84,14 +122,9 @@ resource "aws_route_table_association" "private_subnets" {
   route_table_id = aws_route_table.private.id
 }
 
-# Дані про доступні зони
-data "aws_availability_zones" "available" {
-  state = "available"
-}
-
 # VPC Endpoint для ECR API
 resource "aws_vpc_endpoint" "ecr_api" {
-  vpc_id       = aws_vpc.custom_vpc.id
+  vpc_id       = data.aws_vpc.default.id
   service_name = "com.amazonaws.${var.region}.ecr.api"
   vpc_endpoint_type = "Interface"
 
@@ -106,7 +139,7 @@ resource "aws_vpc_endpoint" "ecr_api" {
 
 # VPC Endpoint для ECR Docker Registry
 resource "aws_vpc_endpoint" "ecr_dkr" {
-  vpc_id       = aws_vpc.custom_vpc.id
+  vpc_id       = data.aws_vpc.default.id
   service_name = "com.amazonaws.${var.region}.ecr.dkr"
   vpc_endpoint_type = "Interface"
 
@@ -121,7 +154,7 @@ resource "aws_vpc_endpoint" "ecr_dkr" {
 
 # VPC Endpoint для S3 (для доступу до шарів Docker-образів)
 resource "aws_vpc_endpoint" "s3" {
-  vpc_id           = aws_vpc.custom_vpc.id
+  vpc_id           = data.aws_vpc.default.id
   service_name     = "com.amazonaws.${var.region}.s3"
   vpc_endpoint_type = "Gateway"
 
@@ -134,7 +167,7 @@ resource "aws_vpc_endpoint" "s3" {
 
 # VPC Endpoint для CloudWatch Logs
 resource "aws_vpc_endpoint" "cloudwatch_logs" {
-  vpc_id       = aws_vpc.custom_vpc.id
+  vpc_id       = data.aws_vpc.default.id
   service_name = "com.amazonaws.${var.region}.logs"
   vpc_endpoint_type = "Interface"
 

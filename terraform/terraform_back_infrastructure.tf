@@ -225,7 +225,7 @@ resource "aws_alb_target_group" "rds_target_group" {
   name        = "rds-target-group"
   port        = 8000
   protocol    = "HTTP"
-  vpc_id      = aws_vpc.custom_vpc.id
+  vpc_id      = data.aws_vpc.default.id
   target_type = "ip"
 
   health_check {
@@ -242,7 +242,7 @@ resource "aws_alb_target_group" "redis_target_group" {
   name        = "redis-target-group"
   port        = 8001
   protocol    = "HTTP"
-  vpc_id      = aws_vpc.custom_vpc.id
+  vpc_id      = data.aws_vpc.default.id
   target_type = "ip"
 
   health_check {
@@ -380,7 +380,7 @@ resource "aws_elasticache_subnet_group" "redis-subnet-group" {
 #  SG  для  бази даних RDS
 resource "aws_security_group" "rds_db_sg" {
   name_prefix = "rds-sg"
-  vpc_id      = aws_vpc.custom_vpc.id
+  vpc_id      = data.aws_vpc.default.id
 
   ingress {
     from_port = 5432
@@ -401,7 +401,7 @@ resource "aws_security_group" "rds_db_sg" {
 resource "aws_security_group" "redis_sg" {
   name        = "redis-sg"
   description = "Security group for Redis"
-  vpc_id      = aws_vpc.custom_vpc.id
+  vpc_id      = data.aws_vpc.default.id
 
   ingress {
     from_port = 6379
@@ -425,7 +425,7 @@ resource "aws_security_group" "redis_sg" {
 #  SG  для контейнера rds
 resource "aws_security_group" "rds_api_sg" {
   name_prefix = "rds-api-sg-"
-  vpc_id      = aws_vpc.custom_vpc.id
+  vpc_id      = data.aws_vpc.default.id
 
   ingress {
     from_port = 8000
@@ -449,7 +449,7 @@ resource "aws_security_group" "rds_api_sg" {
 #  SG  для  контейнера  redis
 resource "aws_security_group" "redis_api_sg" {
   name_prefix = "redis-api-sg-"
-  vpc_id      = aws_vpc.custom_vpc.id
+  vpc_id      = data.aws_vpc.default.id
 
   ingress {
     from_port = 8001
@@ -473,7 +473,7 @@ resource "aws_security_group" "redis_api_sg" {
 # SG  для  ALB
 resource "aws_security_group" "alb_sg" {
   name_prefix = "alb-sg-"
-  vpc_id      = aws_vpc.custom_vpc.id
+  vpc_id      = data.aws_vpc.default.id
 
   ingress {
     from_port = 80                # HTTP
@@ -502,7 +502,7 @@ resource "aws_security_group" "alb_sg" {
 }
 
 resource "aws_security_group" "ecr_endpoint_sg" {
-  vpc_id = aws_vpc.custom_vpc.id
+  vpc_id = data.aws_vpc.default.id
 
   ingress {
     from_port = 443
@@ -525,7 +525,7 @@ resource "aws_security_group" "ecr_endpoint_sg" {
 
 # Security Group для CloudWatch Logs VPC Endpoint
 resource "aws_security_group" "logs_endpoint_sg" {
-  vpc_id = aws_vpc.custom_vpc.id
+  vpc_id = data.aws_vpc.default.id
 
   ingress {
     from_port   = 443
