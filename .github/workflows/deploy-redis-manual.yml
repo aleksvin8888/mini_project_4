@@ -64,7 +64,7 @@ jobs:
     - name: Build, tag, and push Docker image to Amazon ECR
       id: build-push
       run: |
-        IMAGE_TAG=${GIT_TAG}
+        IMAGE_TAG=${{ env.TAG }}
         echo "Building Docker image with tag: $IMAGE_TAG"
         
         cd backend_redis
