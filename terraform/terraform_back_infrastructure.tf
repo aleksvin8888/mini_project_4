@@ -51,7 +51,7 @@ resource "aws_ecs_task_definition" "rds_api_task" {
       essential = true
       portMappings = [
         {
-          containerPort = 8000  # Контейнер слухатиме запити на цьому порту.
+          containerPort = 8000
           protocol = "tcp"
         }
       ]
@@ -148,7 +148,7 @@ resource "aws_ecs_task_definition" "redis_api_task" {
         },
         {
           name  = "REDIS_DB"
-          value = "0" # База даних Redis (за замовчуванням 0)
+          value = "0"
         },
         {
           name  = "CORS_ALLOWED_ORIGINS"

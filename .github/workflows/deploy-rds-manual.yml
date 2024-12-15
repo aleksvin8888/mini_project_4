@@ -43,10 +43,15 @@ jobs:
           TAG=${{ github.event.inputs.tag }}
           echo "Using provided tag: $TAG"
         else
-          TAG="v$(date +'%Y%m%d')-$(git rev-parse --short HEAD)"
+          TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
+          TAG="v${TIMESTAMP}"
           echo "No tag provided. Generated tag: $TAG"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
           git tag $TAG
-          git push origin $TAG
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git $TAG
         fi
         echo "TAG=$TAG" >> $GITHUB_ENV
         echo "Final tag: $TAG"
