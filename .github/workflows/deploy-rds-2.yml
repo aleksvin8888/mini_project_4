@@ -83,6 +83,8 @@ jobs:
         echo "NEW_TASK_DEF_ARN=$NEW_TASK_DEF_ARN" >> $GITHUB_ENV
 
     - name: Update ECS Service
+      env:
+        NEW_TASK_DEF_ARN: ${{ env.NEW_TASK_DEF_ARN }}
       run: |
         NEW_TASK_DEF_ARN=${{ steps.update-task.outputs.NEW_TASK_DEF_ARN }}
         aws ecs update-service \
