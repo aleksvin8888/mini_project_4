@@ -51,14 +51,22 @@ jobs:
       id: build-push
       run: |
         IMAGE_TAG=${GIT_TAG}
+        echo "Building Docker image with tag: $IMAGE_TAG"
+        
         cd backend_rds
         docker build -t $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
-        echo "IMAGE_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_ENV
+        
+        IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG"
+        echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+        echo "Docker image pushed to ECR: $IMAGE_URI"
 
     - name: Update ECS Task Definition
       id: update-task
       run: |
+        IMAGE_URI=${{ env.IMAGE_URI }}
+        echo "Using IMAGE_URI: $IMAGE_URI"
+        
         CURRENT_TASK_DEF=$(aws ecs describe-task-definition \
           --task-definition $TASK_FAMILY \
           --query "taskDefinition" \
@@ -76,20 +84,28 @@ jobs:
           --output text)
         
         if [ -z "$NEW_TASK_DEF_ARN" ]; then
-          echo "Failed to register new task definition"
+          echo "Error: Failed to register new task definition."
+          exit 1
+        fi
+
+        echo "NEW_TASK_DEF_ARN=$NEW_TASK_DEF_ARN" >> $GITHUB_ENV
+        echo "Registered new Task Definition ARN: $NEW_TASK_DEF_ARN"
+
+    - name: Update ECS Service
+      run: |
+        NEW_TASK_DEF_ARN=${{ env.NEW_TASK_DEF_ARN }}
+        echo "Using NEW_TASK_DEF_ARN: $NEW_TASK_DEF_ARN"
+
+        if [ -z "$NEW_TASK_DEF_ARN" ]; then
+          echo "Error: Task Definition ARN is empty."
           exit 1
         fi
         
-        echo "NEW_TASK_DEF_ARN=$NEW_TASK_DEF_ARN" >> $GITHUB_ENV
-
-    - name: Update ECS Service
-      env:
-        NEW_TASK_DEF_ARN: ${{ env.NEW_TASK_DEF_ARN }}
-      run: |
-        NEW_TASK_DEF_ARN=${{ steps.update-task.outputs.NEW_TASK_DEF_ARN }}
         aws ecs update-service \
           --cluster $ECS_CLUSTER \
           --service $ECS_SERVICE \
           --task-definition $NEW_TASK_DEF_ARN \
           --force-new-deployment \
           --region $AWS_REGION
+
+        echo "ECS Service updated successfully with Task Definition: $NEW_TASK_DEF_ARN"
