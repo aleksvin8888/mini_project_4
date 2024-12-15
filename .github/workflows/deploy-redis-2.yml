@@ -53,7 +53,7 @@ jobs:
         IMAGE_TAG=${GIT_TAG}
         echo "Building Docker image with tag: $IMAGE_TAG"
         
-        cd backend_rds
+        cd backend_redis
         docker build -t $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
         
