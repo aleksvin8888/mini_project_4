@@ -2,9 +2,6 @@ name: Deploy back-rds
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - '*'
 
 jobs:
   deploy:
