@@ -85,7 +85,7 @@ resource "aws_ecs_task_definition" "rds_api_task" {
         },
         {
           name  = "CORS_ALLOWED_ORIGINS"
-          value = "https://${var.frontend_subdomain}.${var.main_domain_name}"
+          value = "https://${var.frontend_subdomain}.${var.main_domain_name},http://localhost"
         }
       ]
       logConfiguration = {
@@ -98,10 +98,6 @@ resource "aws_ecs_task_definition" "rds_api_task" {
       }
     }
   ])
-
-   lifecycle {
-    create_before_destroy = true
-  }
 
   # IAM-роль, яку ECS використовує для виконання завдання (наприклад, доступ до ECR для завантаження образів).
   execution_role_arn = aws_iam_role.ecs_task_execution_role.arn
@@ -156,7 +152,7 @@ resource "aws_ecs_task_definition" "redis_api_task" {
         },
         {
           name  = "CORS_ALLOWED_ORIGINS"
-          value = "https://${var.frontend_subdomain}.${var.main_domain_name}"
+          value = "https://${var.frontend_subdomain}.${var.main_domain_name},http://localhost"
         }
       ]
        logConfiguration = {
@@ -170,13 +166,9 @@ resource "aws_ecs_task_definition" "redis_api_task" {
     }
   ])
 
-   lifecycle {
-    create_before_destroy = true
-  }
   execution_role_arn = aws_iam_role.ecs_task_execution_role.arn
   task_role_arn      = aws_iam_role.ecs_task_role.arn
 }
-
 
 
 ######################################### ECS сервіси ##################################################################
