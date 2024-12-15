@@ -1,4 +1,4 @@
-name: Deploy backend-redis to Amazon ECS
+name: Deploy backend-rds by tag
 
 on:
   push:
@@ -7,10 +7,10 @@ on:
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
-  ECR_REPOSITORY: "redis-api-repo"
+  ECR_REPOSITORY: "rds-api-repo"
   ECS_CLUSTER: "api-cluster"
-  ECS_SERVICE: "redis_api_service"
-  TASK_FAMILY: "redis-api-task"
+  ECS_SERVICE: "rds_api_service"
+  TASK_FAMILY: "rds-api-task"
   AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
 
 permissions:
@@ -53,7 +53,7 @@ jobs:
         IMAGE_TAG=${GIT_TAG}
         echo "Building Docker image with tag: $IMAGE_TAG"
         
-        cd backend_redis
+        cd backend_rds
         docker build -t $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG .
         docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
         
