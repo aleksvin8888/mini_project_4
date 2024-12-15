@@ -2,9 +2,6 @@ name: Deploy back-redis
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - '*'
 
 jobs:
   deploy:

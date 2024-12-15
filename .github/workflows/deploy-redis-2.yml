@@ -1,0 +1,111 @@
+name: Deploy backend-redis to Amazon ECS
+
+on:
+  push:
+    tags:
+      - '*'
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REPOSITORY: "redis-api-repo"
+  ECS_CLUSTER: "api-cluster"
+  ECS_SERVICE: "redis_api_service"
+  TASK_FAMILY: "redis-api-task"
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Install jq
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq    
+
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Extract Git Tag
+      id: tag
+      run: |
+        echo "GIT_TAG=${GITHUB_REF##*/}" >> $GITHUB_ENV
+        echo "Using Git Tag: $GIT_TAG"
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build, tag, and push Docker image to Amazon ECR
+      id: build-push
+      run: |
+        IMAGE_TAG=${GIT_TAG}
+        echo "Building Docker image with tag: $IMAGE_TAG"
+        
+        cd backend_rds
+        docker build -t $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+        
+        IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG"
+        echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+        echo "Docker image pushed to ECR: $IMAGE_URI"
+
+    - name: Update ECS Task Definition
+      id: update-task
+      run: |
+        IMAGE_URI=${{ env.IMAGE_URI }}
+        echo "Using IMAGE_URI: $IMAGE_URI"
+        
+        CURRENT_TASK_DEF=$(aws ecs describe-task-definition \
+          --task-definition $TASK_FAMILY \
+          --query "taskDefinition" \
+          --output json)
+        
+        NEW_TASK_DEF=$(echo $CURRENT_TASK_DEF | jq --arg IMAGE_URI "$IMAGE_URI" '
+          .containerDefinitions[0].image = $IMAGE_URI |
+          {containerDefinitions, family, executionRoleArn, taskRoleArn, networkMode, requiresCompatibilities, cpu, memory}')
+        
+        echo $NEW_TASK_DEF > new-task-def.json
+        
+        NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+          --cli-input-json file://new-task-def.json \
+          --query "taskDefinition.taskDefinitionArn" \
+          --output text)
+        
+        if [ -z "$NEW_TASK_DEF_ARN" ]; then
+          echo "Error: Failed to register new task definition."
+          exit 1
+        fi
+
+        echo "NEW_TASK_DEF_ARN=$NEW_TASK_DEF_ARN" >> $GITHUB_ENV
+        echo "Registered new Task Definition ARN: $NEW_TASK_DEF_ARN"
+
+    - name: Update ECS Service
+      run: |
+        NEW_TASK_DEF_ARN=${{ env.NEW_TASK_DEF_ARN }}
+        echo "Using NEW_TASK_DEF_ARN: $NEW_TASK_DEF_ARN"
+
+        if [ -z "$NEW_TASK_DEF_ARN" ]; then
+          echo "Error: Task Definition ARN is empty."
+          exit 1
+        fi
+        
+        aws ecs update-service \
+          --cluster $ECS_CLUSTER \
+          --service $ECS_SERVICE \
+          --task-definition $NEW_TASK_DEF_ARN \
+          --force-new-deployment \
+          --region $AWS_REGION
+
+        echo "ECS Service updated successfully with Task Definition: $NEW_TASK_DEF_ARN"

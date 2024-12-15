@@ -21,7 +21,7 @@ def test_connection(request):
         )
         # Ping the Redis server
         r.ping()
-        return JsonResponse({'message': 'Connection to Backend Redis is successful! Excellent work'})
+        return JsonResponse({'message': 'Connection to Backend Redis is successful! Test git tags success'})
     except redis.RedisError as e:
         logger.error(f"Error connecting to Redis: {e}")
         return JsonResponse({'error': str(e)}, status=500)
